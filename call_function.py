@@ -6,10 +6,10 @@ from google import genai
 from google.genai import types
 
 
-available_functions = types.Tool(
-    function_declarations=[schema_get_files_info, schema_get_file_content, 
-    schema_write_file, schema_run_python_file],
-)
+# available_functions = types.Tool(
+#     function_declarations=[schema_get_files_info, schema_get_file_content, 
+#     schema_write_file, schema_run_python_file],
+# )
 
 # Mapping of function names to implementations
 function_implementations = {
@@ -19,7 +19,72 @@ function_implementations = {
     "run_python_file": run_python_file,
 }
 
-def call_function(function_call, working_directory="./calculator", verbose=False):
+available_functions_list = [
+    {
+        'type': 'function',
+        'function': {
+            'name': 'get_files_info',
+            'description': 'Lists files in a directory relative to the working directory',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'directory': {'type': 'string', 'description': 'The relative directory path'}
+                },
+                'required': ['directory'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'get_file_content',
+            'description': 'Reads the content of a specific file',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'file_path': {'type': 'string', 'description': 'The relative file path'}
+                },
+                'required': ['file_path'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'write_file',
+            'description': 'Writes content to a file, overwriting if it exists',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'file_path': {'type': 'string', 'description': 'The relative file path'},
+                    'content': {'type': 'string', 'description': 'The text content to write'}
+                },
+                'required': ['file_path', 'content'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'run_python_file',
+            'description': 'Executes a Python file and returns the output',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'file_path': {'type': 'string', 'description': 'The relative path of the .py file'},
+                    'args': {
+                        'type': 'array', 
+                        'items': {'type': 'string'}, 
+                        'description': 'Optional arguments list'
+                    }
+                },
+                'required': ['file_path'],
+            },
+        },
+    }
+]
+
+def better_call_function(function_call, working_directory="./calculator", verbose=False):
     function_name = function_call.name or ""
 
     if verbose:

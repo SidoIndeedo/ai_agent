@@ -1,86 +1,67 @@
 import os
-import requests
 import argparse
+import ollama  # Make sure to pip install ollama
 from prompt import system_prompt
-from call_function import available_functions, call_function
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+# Import the list and the map we created
+from call_function import available_functions_list, function_implementations
 
-load_dotenv()
-api_key=os.environ.get("GEMINI_API_KEY")
-
-client = genai.Client(api_key=api_key)
-# user_prompt = 'Why is Boot.dev such a great place to learn backend development? Use one paragraph maximum.'
-
-# def ask_llama(prompt):
-#     res = requests.post()
+parser = argparse.ArgumentParser(description="Local AI Agent")
+parser.add_argument("user_prompt", type=str, help="User prompt to send to the AI agent")
+parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+args = parser.parse_args()
 
 def main():
-    print("")
+    # Include the system prompt in the messages history immediately
+    messages = [
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': args.user_prompt}
+    ]
 
-parser = argparse.ArgumentParser(description="what do you need?")
-parser.add_argument("user_prompt", type=str, help="user prompt")
-parser.add_argument("--verbose", action="store_true", help="enable verbose output")
-args = parser.parse_args()
-user_prompt = args.user_prompt
-messages = [types.Content(role="user", parts=[types.Part(text=user_prompt)])]
-
-
-response = client.models.generate_content(
-    model='gemini-2.5-flash', contents=messages, config=types.GenerateContentConfig(tools=[available_functions], system_instruction=system_prompt)
-)
-
-
-
-prompt_tokens = response.usage_metadata.prompt_token_count
-candidate_tokens = response.usage_metadata.candidates_token_count
-
-if args.verbose:
-
-    if response.usage_metadata is None:
-        raise RuntimeError("API req failed")
-
-    print(f"User prompt: {user_prompt}")
-    print(f"Prompt tokens: {prompt_tokens}")
-    print(f"Response tokens: {candidate_tokens}")
-
-candidate = response.candidates[0]
-if response.function_calls:
-    function_results = []
-
-    for function_call in response.function_calls:
-        # This matches the specific format requested by your assignment
-        print(f"Calling function: {function_call.name}({function_call.args})")
-        function_call_result = call_function(function_call, verbose=args.verbose)
-
-        if not function_call_result.parts:
-            raise RuntimeError(f"Function call result part list is empty")
-        
-        part = function_call_result.parts[0]
-        if part.function_response is None:
-            raise RuntimeError("function_response is None")
-        
-        if part.function_response.response is None:
-            raise RuntimeError("function_response.response is None")
-
-        function_results.append(part)
-
+    for i in range(20):
         if args.verbose:
-            print(f"-> {part.function_response.response}")
-else:
-    # If no function calls, print the text as normal
-    print(response.text)
+            print(f"\n-- Iteration {i+1} --")
 
+        response = ollama.chat(
+            model='llama3.1', # Ensure you have run 'ollama pull llama3.1'
+            messages=messages,
+            tools=available_functions_list,
+        )
 
+        # 1. Save the model's message (which might contain tool_calls)
+        messages.append(response['message'])
 
+        # 2. Check if we are done (no tool calls)
+        if not response['message'].get('tool_calls'):
+            print('\nFinal response:')
+            print(response['message']['content'])
+            break
 
+        # 3. Handle Tool Calls
+        for tool in response['message'].get('tool_calls', []):
+            func_name = tool['function']['name']
+            func_args = tool['function']['arguments']
 
-# print(f"user prompt: {user_prompt}")
+            if args.verbose:
+                print(f'Llama wants to call: {func_name}({func_args})')
 
-# print("Response:")
-# print(response.text)
+            # Inject the sandbox path
+            func_args['working_directory'] = './calculator'
 
+            # Execute directly from our map
+            if func_name in function_implementations:
+                actual_func = function_implementations[func_name]
+                result = actual_func(**func_args)
+            else:
+                result = f"Error: Function {func_name} not found."
+
+            # 4. Add the tool RESULT back to history
+            # Note: For Llama, the role is 'tool'
+            messages.append({
+                'role': 'tool',
+                'content': str(result),
+            })
+    else:
+        print('Error: max iteration reached')
 
 if __name__ == "__main__":
     main()
