@@ -1,6 +1,8 @@
 import os
 import requests
 import argparse
+from prompt import system_prompt
+from call_function import available_functions, call_function
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -15,7 +17,7 @@ client = genai.Client(api_key=api_key)
 #     res = requests.post()
 
 def main():
-    print("hello")
+    print("")
 
 parser = argparse.ArgumentParser(description="what do you need?")
 parser.add_argument("user_prompt", type=str, help="user prompt")
@@ -26,7 +28,7 @@ messages = [types.Content(role="user", parts=[types.Part(text=user_prompt)])]
 
 
 response = client.models.generate_content(
-    model='gemini-2.5-flash-lite', contents=messages
+    model='gemini-2.5-flash', contents=messages, config=types.GenerateContentConfig(tools=[available_functions], system_instruction=system_prompt)
 )
 
 
@@ -42,7 +44,36 @@ if args.verbose:
     print(f"User prompt: {user_prompt}")
     print(f"Prompt tokens: {prompt_tokens}")
     print(f"Response tokens: {candidate_tokens}")
-print(response.text)
+
+candidate = response.candidates[0]
+if response.function_calls:
+    function_results = []
+
+    for function_call in response.function_calls:
+        # This matches the specific format requested by your assignment
+        print(f"Calling function: {function_call.name}({function_call.args})")
+        function_call_result = call_function(function_call, verbose=args.verbose)
+
+        if not function_call_result.parts:
+            raise RuntimeError(f"Function call result part list is empty")
+        
+        part = function_call_result.parts[0]
+        if part.function_response is None:
+            raise RuntimeError("function_response is None")
+        
+        if part.function_response.response is None:
+            raise RuntimeError("function_response.response is None")
+
+        function_results.append(part)
+
+        if args.verbose:
+            print(f"-> {part.function_response.response}")
+else:
+    # If no function calls, print the text as normal
+    print(response.text)
+
+
+
 
 
 # print(f"user prompt: {user_prompt}")
